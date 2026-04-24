@@ -8,7 +8,7 @@ import (
 
 func ListDemandasHandler(c *fiber.Ctx) error {
 	var demandas []models.Demanda
-	query := db.DB.Preload("Agencia").Order("id desc")
+	query := db.DB.Preload("Agencia").Preload("Seguimiento").Order("id desc")
 
 	// Búsqueda simple
 	search := c.Query("search")

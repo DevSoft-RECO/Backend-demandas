@@ -37,6 +37,10 @@ func SetupRoutes(app *fiber.App) {
 	api.Put("/demandas/:id", middleware.AuthRequired, handlers.UpdateDemandaHandler)
 	api.Delete("/demandas/:id", middleware.AuthRequired, handlers.DeleteDemandaHandler)
 
+	// Seguimientos
+	api.Get("/seguimientos", middleware.AuthRequired, handlers.ListSeguimientosHandler)
+	api.Post("/seguimientos", middleware.AuthRequired, handlers.CreateInitialTrackingHandler)
+
 
 	// Health check
 	app.Get("/", func(c *fiber.Ctx) error {
