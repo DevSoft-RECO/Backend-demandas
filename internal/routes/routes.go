@@ -15,6 +15,9 @@ func SetupRoutes(app *fiber.App) {
 	// Auth
 	api.Get("/me", handlers.MeHandler)
 
+	// Agencias
+	api.Get("/agencias", middleware.AuthRequired, handlers.ListAgenciasHandler)
+
 	// Bufetes (Módulo 1)
 	api.Get("/bufetes", middleware.AuthRequired, handlers.ListBufetesHandler)
 	api.Post("/bufetes", middleware.AuthRequired, handlers.CreateBufeteHandler)
@@ -26,6 +29,13 @@ func SetupRoutes(app *fiber.App) {
 	api.Post("/presets", middleware.AuthRequired, handlers.CreatePresetHandler)
 	api.Put("/presets/:id", middleware.AuthRequired, handlers.UpdatePresetHandler)
 	api.Delete("/presets/:id", middleware.AuthRequired, handlers.DeletePresetHandler)
+
+	// Demandas
+	api.Get("/demandas", middleware.AuthRequired, handlers.ListDemandasHandler)
+	api.Get("/demandas/:id", middleware.AuthRequired, handlers.GetDemandaHandler)
+	api.Post("/demandas", middleware.AuthRequired, handlers.CreateDemandaHandler)
+	api.Put("/demandas/:id", middleware.AuthRequired, handlers.UpdateDemandaHandler)
+	api.Delete("/demandas/:id", middleware.AuthRequired, handlers.DeleteDemandaHandler)
 
 
 	// Health check
