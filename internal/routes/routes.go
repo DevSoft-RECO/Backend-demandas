@@ -3,6 +3,7 @@ package routes
 import (
 	"github.com/DevSoft-RECO/backend-creditos-go/internal/config"
 	"github.com/DevSoft-RECO/backend-creditos-go/internal/handlers"
+	"github.com/DevSoft-RECO/backend-creditos-go/internal/middleware"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -13,6 +14,11 @@ func SetupRoutes(app *fiber.App) {
 
 	// Auth
 	api.Get("/me", handlers.MeHandler)
+
+	// Bufetes (Módulo 1)
+	api.Get("/bufetes", middleware.AuthRequired, handlers.ListBufetesHandler)
+	api.Post("/bufetes", middleware.AuthRequired, handlers.CreateBufeteHandler)
+	api.Get("/usuarios/search", middleware.AuthRequired, handlers.SearchUsuariosHandler)
 
 
 	// Health check

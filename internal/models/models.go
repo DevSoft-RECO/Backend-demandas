@@ -29,4 +29,15 @@ func (Usuario) TableName() string {
 	return "usuarios"
 }
 
+type Bufete struct {
+	ID        int     `gorm:"primaryKey" json:"id"`
+	UsuarioID int     `gorm:"not null;index" json:"usuario_id"`
+	Nombre    *string `gorm:"size:255;not null" json:"nombre"`
+	Telefono  *string `gorm:"size:20" json:"telefono"`
+}
+
+func (Bufete) TableName() string {
+	return "bufetes"
+}
+
 
