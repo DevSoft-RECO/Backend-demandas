@@ -59,6 +59,7 @@ func ConnectDB() {
 		&models.Agencia{},
 		&models.Usuario{},
 		&models.Bufete{},
+		&models.Preset{},
 	); err != nil {
 		log.Printf("[ERROR] Error en auto-migración: %v", err)
 	}

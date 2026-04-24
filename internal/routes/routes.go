@@ -20,6 +20,13 @@ func SetupRoutes(app *fiber.App) {
 	api.Post("/bufetes", middleware.AuthRequired, handlers.CreateBufeteHandler)
 	api.Get("/usuarios/search", middleware.AuthRequired, handlers.SearchUsuariosHandler)
 
+	// Presets (Módulo 1)
+	api.Get("/presets", middleware.AuthRequired, handlers.ListPresetsHandler)
+	api.Get("/presets/:id", middleware.AuthRequired, handlers.GetPresetHandler)
+	api.Post("/presets", middleware.AuthRequired, handlers.CreatePresetHandler)
+	api.Put("/presets/:id", middleware.AuthRequired, handlers.UpdatePresetHandler)
+	api.Delete("/presets/:id", middleware.AuthRequired, handlers.DeletePresetHandler)
+
 
 	// Health check
 	app.Get("/", func(c *fiber.Ctx) error {
