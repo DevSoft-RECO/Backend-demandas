@@ -48,6 +48,10 @@ type Seguimiento struct {
 	// Auditoría
 	FechaEstadoSeguimiento time.Time  `json:"fecha_estado_seguimiento"`
 	FechaEstadoLegal       time.Time  `json:"fecha_estado_legal"`
+	FechaPago1             *time.Time `json:"fecha_pago_1"`
+	FechaPago2             *time.Time `json:"fecha_pago_2"`
+	FechaPago3             *time.Time `json:"fecha_pago_3"`
+	FechaPago4             *time.Time `json:"fecha_pago_4"`
 	CreatedAt              time.Time  `json:"created_at"`
 	UpdatedAt              time.Time  `json:"updated_at"`
 }

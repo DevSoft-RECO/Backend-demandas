@@ -27,7 +27,7 @@ func main() {
 
 	// 4. Init Fiber
 	app := fiber.New(fiber.Config{
-		AppName: "APP6 Créditos — Backend Go",
+		AppName: "APP8 Demandas",
 	})
 
 	// 5. Middleware
