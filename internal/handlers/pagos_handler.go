@@ -31,17 +31,15 @@ func GetPagosResumenAbogadosHandler(c *fiber.Ctx) error {
 
 		var totalPagado, totalPendiente float64
 		for _, seg := range s {
-			// Sumar pagados
-			if seg.IsPagado1 { totalPagado += seg.PagoPactado1 }
-			if seg.IsPagado2 { totalPagado += seg.PagoPactado2 }
-			if seg.IsPagado3 { totalPagado += seg.PagoPactado3 }
-			if seg.IsPagado4 { totalPagado += seg.PagoPactado4 }
+			// Pagos por Etapas
+			if seg.IsPagado1 { totalPagado += seg.PagoPactado1 } else { totalPendiente += seg.PagoPactado1 }
+			if seg.IsPagado2 { totalPagado += seg.PagoPactado2 } else { totalPendiente += seg.PagoPactado2 }
+			if seg.IsPagado3 { totalPagado += seg.PagoPactado3 } else { totalPendiente += seg.PagoPactado3 }
+			if seg.IsPagado4 { totalPagado += seg.PagoPactado4 } else { totalPendiente += seg.PagoPactado4 }
 
-			// Sumar pendientes
-			if !seg.IsPagado1 { totalPendiente += seg.PagoPactado1 }
-			if !seg.IsPagado2 { totalPendiente += seg.PagoPactado2 }
-			if !seg.IsPagado3 { totalPendiente += seg.PagoPactado3 }
-			if !seg.IsPagado4 { totalPendiente += seg.PagoPactado4 }
+			// Pagos Especiales
+			if seg.IsPagadoUnico { totalPagado += seg.PagoUnico } else if seg.PagoUnico > 0 { totalPendiente += seg.PagoUnico }
+			if seg.IsPagadoDesestimacion { totalPagado += seg.MontoDesestimacion } else if seg.MontoDesestimacion > 0 { totalPendiente += seg.MontoDesestimacion }
 		}
 
 		nombreAbogado := "Sin Nombre"
@@ -69,12 +67,16 @@ func GetPagoDetalleSeguimientoHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"detail": "Seguimiento no encontrado"})
 	}
 
-	totalComision := s.PagoPactado1 + s.PagoPactado2 + s.PagoPactado3 + s.PagoPactado4
+	// Comisión Total = Suma de todas las pactadas + Casos especiales
+	totalComision := s.PagoPactado1 + s.PagoPactado2 + s.PagoPactado3 + s.PagoPactado4 + s.PagoUnico + s.MontoDesestimacion
+	
 	pagado := 0.0
 	if s.IsPagado1 { pagado += s.PagoPactado1 }
 	if s.IsPagado2 { pagado += s.PagoPactado2 }
 	if s.IsPagado3 { pagado += s.PagoPactado3 }
 	if s.IsPagado4 { pagado += s.PagoPactado4 }
+	if s.IsPagadoUnico { pagado += s.PagoUnico }
+	if s.IsPagadoDesestimacion { pagado += s.MontoDesestimacion }
 
 	return c.JSON(fiber.Map{
 		"seguimiento":    s,
@@ -84,11 +86,11 @@ func GetPagoDetalleSeguimientoHandler(c *fiber.Ctx) error {
 	})
 }
 
-// RegistrarDesembolsoHandler registra el pago de una etapa
+// RegistrarDesembolsoHandler registra el pago de una etapa o caso especial
 func RegistrarDesembolsoHandler(c *fiber.Ctx) error {
 	var req struct {
-		IDSeguimiento uint `json:"id_seguimiento"`
-		Etapa         int  `json:"etapa"`
+		IDSeguimiento uint        `json:"id_seguimiento"`
+		Etapa         interface{} `json:"etapa"`
 	}
 
 	if err := c.BodyParser(&req); err != nil {
@@ -100,32 +102,44 @@ func RegistrarDesembolsoHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"detail": "Seguimiento no encontrado"})
 	}
 
-	// Regla de Etapa 1 (25% Máximo) si no es pago único
-	if req.Etapa == 1 && s.PagoUnico == 0 {
-		totalComision := s.PagoPactado1 + s.PagoPactado2 + s.PagoPactado3 + s.PagoPactado4
-		if s.PagoPactado1 > (totalComision * 0.2501) { // 0.2501 por temas de redondeo
-			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-				"detail": fmt.Sprintf("El pago de Etapa 1 (Q%.2f) excede el 25%% de la comisión total (Q%.2f)", s.PagoPactado1, totalComision),
-			})
-		}
-	}
-
 	now := time.Now()
-	switch req.Etapa {
-	case 1:
-		s.IsPagado1 = true
-		s.FechaPago1 = &now
-	case 2:
-		s.IsPagado2 = true
-		s.FechaPago2 = &now
-	case 3:
-		s.IsPagado3 = true
-		s.FechaPago3 = &now
-	case 4:
-		s.IsPagado4 = true
-		s.FechaPago4 = &now
+
+	// Evaluar el tipo de etapa
+	switch v := req.Etapa.(type) {
+	case float64: // JSON numbers are float64 in Go interface{}
+		etapaInt := int(v)
+		// Regla de Etapa 1 (25% Máximo)
+		if etapaInt == 1 && s.PagoUnico == 0 {
+			totalComision := s.PagoPactado1 + s.PagoPactado2 + s.PagoPactado3 + s.PagoPactado4
+			if s.PagoPactado1 > (totalComision * 0.2501) {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+					"detail": fmt.Sprintf("El pago de Etapa 1 (Q%.2f) excede el 25%% de la comisión total (Q%.2f)", s.PagoPactado1, totalComision),
+				})
+			}
+		}
+
+		switch etapaInt {
+		case 1: s.IsPagado1 = true; s.FechaPago1 = &now
+		case 2: s.IsPagado2 = true; s.FechaPago2 = &now
+		case 3: s.IsPagado3 = true; s.FechaPago3 = &now
+		case 4: s.IsPagado4 = true; s.FechaPago4 = &now
+		default: return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"detail": "Etapa numérica inválida"})
+		}
+
+	case string:
+		switch v {
+		case "unico":
+			s.IsPagadoUnico = true
+			s.FechaPagoUnico = &now
+		case "desestimacion":
+			s.IsPagadoDesestimacion = true
+			s.FechaPagoDesestimacion = &now
+		default:
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"detail": "Tipo de pago especial inválido"})
+		}
+
 	default:
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"detail": "Etapa inválida"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"detail": "Tipo de dato para etapa no soportado"})
 	}
 
 	if err := db.DB.Save(&s).Error; err != nil {

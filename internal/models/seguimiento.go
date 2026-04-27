@@ -18,36 +18,40 @@ type Seguimiento struct {
 	
 	// Snapshot Financiero Global
 	PorcentajeDemanda  float64        `json:"porcentaje_demanda"`
-	PagoUnico          float64        `json:"pago_unico"`
-	MontoDesestimacion float64        `json:"monto_desestimacion"`
+	PagoUnico                 float64 `json:"pago_unico"`
+	IsPagadoUnico             bool    `gorm:"default:false" json:"is_pagado_unico"`
+	MontoDesestimacion        float64 `json:"monto_desestimacion"`
+	IsPagadoDesestimacion     bool    `gorm:"default:false" json:"is_pagado_desestimacion"`
 
 	// Etapa 1: Presentación
-	Etapa1JSON         datatypes.JSON `gorm:"type:jsonb;default:'[]'" json:"etapa_1_json"`
-	PagoSugerido1      float64        `json:"pago_sugerido_1"`
-	PagoPactado1       float64        `json:"pago_pactado_1"`
-	IsPagado1          bool           `gorm:"default:false" json:"is_pagado_1"`
+	Etapa1JSON    datatypes.JSON `gorm:"type:jsonb;default:'[]'" json:"etapa_1_json"`
+	PagoSugerido1 float64        `json:"pago_sugerido_1"`
+	PagoPactado1  float64        `json:"pago_pactado_1"`
+	IsPagado1     bool           `gorm:"default:false" json:"is_pagado_1"`
 
 	// Etapa 2: Admisión
-	Etapa2JSON         datatypes.JSON `gorm:"type:jsonb;default:'[]'" json:"etapa_2_json"`
-	PagoSugerido2      float64        `json:"pago_sugerido_2"`
-	PagoPactado2       float64        `json:"pago_pactado_2"`
-	IsPagado2          bool           `gorm:"default:false" json:"is_pagado_2"`
+	Etapa2JSON    datatypes.JSON `gorm:"type:jsonb;default:'[]'" json:"etapa_2_json"`
+	PagoSugerido2 float64        `json:"pago_sugerido_2"`
+	PagoPactado2  float64        `json:"pago_pactado_2"`
+	IsPagado2     bool           `gorm:"default:false" json:"is_pagado_2"`
 
 	// Etapa 3: Notificación
-	Etapa3JSON         datatypes.JSON `gorm:"type:jsonb;default:'[]'" json:"etapa_3_json"`
-	PagoSugerido3      float64        `json:"pago_sugerido_3"`
-	PagoPactado3       float64        `json:"pago_pactado_3"`
-	IsPagado3          bool           `gorm:"default:false" json:"is_pagado_3"`
+	Etapa3JSON    datatypes.JSON `gorm:"type:jsonb;default:'[]'" json:"etapa_3_json"`
+	PagoSugerido3 float64        `json:"pago_sugerido_3"`
+	PagoPactado3  float64        `json:"pago_pactado_3"`
+	IsPagado3     bool           `gorm:"default:false" json:"is_pagado_3"`
 
 	// Etapa 4: Ejecución
-	Etapa4JSON         datatypes.JSON `gorm:"type:jsonb;default:'[]'" json:"etapa_4_json"`
-	PagoSugerido4      float64        `json:"pago_sugerido_4"`
-	PagoPactado4       float64        `json:"pago_pactado_4"`
-	IsPagado4          bool           `gorm:"default:false" json:"is_pagado_4"`
+	Etapa4JSON    datatypes.JSON `gorm:"type:jsonb;default:'[]'" json:"etapa_4_json"`
+	PagoSugerido4 float64        `json:"pago_sugerido_4"`
+	PagoPactado4  float64        `json:"pago_pactado_4"`
+	IsPagado4     bool           `gorm:"default:false" json:"is_pagado_4"`
 
 	// Auditoría
 	FechaEstadoSeguimiento time.Time  `json:"fecha_estado_seguimiento"`
 	FechaEstadoLegal       time.Time  `json:"fecha_estado_legal"`
+	FechaPagoUnico         *time.Time `json:"fecha_pago_unico"`
+	FechaPagoDesestimacion *time.Time `json:"fecha_pago_desestimacion"`
 	FechaPago1             *time.Time `json:"fecha_pago_1"`
 	FechaPago2             *time.Time `json:"fecha_pago_2"`
 	FechaPago3             *time.Time `json:"fecha_pago_3"`
