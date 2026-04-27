@@ -91,6 +91,7 @@ func RegistrarDesembolsoHandler(c *fiber.Ctx) error {
 	var req struct {
 		IDSeguimiento uint        `json:"id_seguimiento"`
 		Etapa         interface{} `json:"etapa"`
+		Cancelar      bool        `json:"cancelar"` // Nuevo campo para anular montos
 	}
 
 	if err := c.BodyParser(&req); err != nil {
@@ -132,8 +133,16 @@ func RegistrarDesembolsoHandler(c *fiber.Ctx) error {
 			s.IsPagadoUnico = true
 			s.FechaPagoUnico = &now
 		case "desestimacion":
-			s.IsPagadoDesestimacion = true
-			s.FechaPagoDesestimacion = &now
+			if req.Cancelar {
+				// Opción de "Anular Cobro"
+				s.MontoDesestimacion = 0
+				s.IsPagadoDesestimacion = false
+				s.FechaPagoDesestimacion = nil
+			} else {
+				// Registro normal
+				s.IsPagadoDesestimacion = true
+				s.FechaPagoDesestimacion = &now
+			}
 		default:
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"detail": "Tipo de pago especial inválido"})
 		}
@@ -146,5 +155,5 @@ func RegistrarDesembolsoHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"detail": "Error al registrar el pago"})
 	}
 
-	return c.JSON(fiber.Map{"status": "ok", "message": "Pago registrado exitosamente"})
+	return c.JSON(fiber.Map{"status": "ok", "message": "Operación realizada exitosamente"})
 }
