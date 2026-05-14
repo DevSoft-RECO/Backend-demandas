@@ -33,6 +33,7 @@ func SetupRoutes(app *fiber.App) {
 
 	// Demandas
 	api.Post("/demandas/import", middleware.AuthRequired, handlers.ImportDemandasHandler)
+	api.Get("/demandas/export", middleware.AuthRequired, handlers.ExportDemandasCSVHandler)
 	api.Get("/demandas", middleware.AuthRequired, handlers.ListDemandasHandler)
 	api.Get("/demandas/:id", middleware.AuthRequired, handlers.GetDemandaHandler)
 	api.Post("/demandas", middleware.AuthRequired, handlers.CreateDemandaHandler)
