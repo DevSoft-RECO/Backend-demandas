@@ -3,6 +3,7 @@ package auth
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -58,4 +59,51 @@ func FetchUserDataFromMother(authToken string) (*MotherUserData, error) {
 	}
 
 	return &data, nil
+}
+
+type MotherAgencia struct {
+	ID        int     `json:"id"`
+	Nombre    string  `json:"nombre"`
+	Codigo    *int    `json:"codigo"`
+	CodigoT24 *string `json:"codigot24"`
+	Direccion *string `json:"direccion"`
+}
+
+func FetchAgenciasFromMother(authToken string) ([]MotherAgencia, error) {
+	req, err := http.NewRequest("GET", fmt.Sprintf("%s/api/agencias", config.Envs.MotherAPIURL), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", authToken)
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("la App Madre respondió con status: %d al consultar agencias", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	var data []MotherAgencia
+	if err := json.Unmarshal(body, &data); err != nil {
+		// Sometimes Laravel returns { "data": [...] }
+		var wrappedData struct {
+			Data []MotherAgencia `json:"data"`
+		}
+		if err2 := json.Unmarshal(body, &wrappedData); err2 != nil {
+			return nil, fmt.Errorf("error decodificando agencias: %v", err2)
+		}
+		data = wrappedData.Data
+	}
+
+	return data, nil
 }

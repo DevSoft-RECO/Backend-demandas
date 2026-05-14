@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"strconv"
 	"github.com/DevSoft-RECO/backend-creditos-go/internal/db"
 	"github.com/DevSoft-RECO/backend-creditos-go/internal/models"
 	"github.com/gofiber/fiber/v2"
@@ -8,19 +9,42 @@ import (
 
 func ListDemandasHandler(c *fiber.Ctx) error {
 	var demandas []models.Demanda
-	query := db.DB.Preload("Agencia").Preload("Seguimiento").Order("id desc")
+	var total int64
 
-	// Búsqueda simple
+	query := db.DB.Model(&models.Demanda{}).Preload("Agencia").Preload("Seguimiento").Order("id desc")
+
+	// Filtros
 	search := c.Query("search")
 	if search != "" {
 		s := "%" + search + "%"
 		query = query.Where("no_credito LIKE ? OR cif LIKE ? OR deudor LIKE ? OR no_juicio LIKE ?", s, s, s, s)
 	}
 
-	if err := query.Find(&demandas).Error; err != nil {
+	estado := c.Query("estado")
+	if estado != "" {
+		query = query.Where("LOWER(estado_legal) = LOWER(?)", estado)
+	}
+
+	// Contar total antes de paginar
+	query.Count(&total)
+
+	// Paginación
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	limit, _ := strconv.Atoi(c.Query("limit", "10"))
+	if page < 1 { page = 1 }
+	if limit < 1 { limit = 10 }
+	offset := (page - 1) * limit
+
+	if err := query.Limit(limit).Offset(offset).Find(&demandas).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"detail": "Error listando demandas", "error": err.Error()})
 	}
-	return c.JSON(demandas)
+
+	return c.JSON(fiber.Map{
+		"total": total,
+		"page":  page,
+		"limit": limit,
+		"data":  demandas,
+	})
 }
 
 func GetDemandaHandler(c *fiber.Ctx) error {
