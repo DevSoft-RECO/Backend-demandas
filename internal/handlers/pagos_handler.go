@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/DevSoft-RECO/backend-creditos-go/internal/db"
@@ -32,14 +31,38 @@ func GetPagosResumenAbogadosHandler(c *fiber.Ctx) error {
 		var totalPagado, totalPendiente float64
 		for _, seg := range s {
 			// Pagos por Etapas
-			if seg.IsPagado1 { totalPagado += seg.PagoPactado1 } else { totalPendiente += seg.PagoPactado1 }
-			if seg.IsPagado2 { totalPagado += seg.PagoPactado2 } else { totalPendiente += seg.PagoPactado2 }
-			if seg.IsPagado3 { totalPagado += seg.PagoPactado3 } else { totalPendiente += seg.PagoPactado3 }
-			if seg.IsPagado4 { totalPagado += seg.PagoPactado4 } else { totalPendiente += seg.PagoPactado4 }
+			if seg.IsPagado1 {
+				totalPagado += seg.PagoPactado1
+			} else {
+				totalPendiente += seg.PagoPactado1
+			}
+			if seg.IsPagado2 {
+				totalPagado += seg.PagoPactado2
+			} else {
+				totalPendiente += seg.PagoPactado2
+			}
+			if seg.IsPagado3 {
+				totalPagado += seg.PagoPactado3
+			} else {
+				totalPendiente += seg.PagoPactado3
+			}
+			if seg.IsPagado4 {
+				totalPagado += seg.PagoPactado4
+			} else {
+				totalPendiente += seg.PagoPactado4
+			}
 
 			// Pagos Especiales
-			if seg.IsPagadoUnico { totalPagado += seg.PagoUnico } else if seg.PagoUnico > 0 { totalPendiente += seg.PagoUnico }
-			if seg.IsPagadoDesestimacion { totalPagado += seg.MontoDesestimacion } else if seg.MontoDesestimacion > 0 { totalPendiente += seg.MontoDesestimacion }
+			if seg.IsPagadoUnico {
+				totalPagado += seg.PagoUnico
+			} else if seg.PagoUnico > 0 {
+				totalPendiente += seg.PagoUnico
+			}
+			if seg.IsPagadoDesestimacion {
+				totalPagado += seg.MontoDesestimacion
+			} else if seg.MontoDesestimacion > 0 {
+				totalPendiente += seg.MontoDesestimacion
+			}
 		}
 
 		nombreAbogado := "Sin Nombre"
@@ -69,14 +92,26 @@ func GetPagoDetalleSeguimientoHandler(c *fiber.Ctx) error {
 
 	// Comisión Total = Suma de todas las pactadas + Casos especiales
 	totalComision := s.PagoPactado1 + s.PagoPactado2 + s.PagoPactado3 + s.PagoPactado4 + s.PagoUnico + s.MontoDesestimacion
-	
+
 	pagado := 0.0
-	if s.IsPagado1 { pagado += s.PagoPactado1 }
-	if s.IsPagado2 { pagado += s.PagoPactado2 }
-	if s.IsPagado3 { pagado += s.PagoPactado3 }
-	if s.IsPagado4 { pagado += s.PagoPactado4 }
-	if s.IsPagadoUnico { pagado += s.PagoUnico }
-	if s.IsPagadoDesestimacion { pagado += s.MontoDesestimacion }
+	if s.IsPagado1 {
+		pagado += s.PagoPactado1
+	}
+	if s.IsPagado2 {
+		pagado += s.PagoPactado2
+	}
+	if s.IsPagado3 {
+		pagado += s.PagoPactado3
+	}
+	if s.IsPagado4 {
+		pagado += s.PagoPactado4
+	}
+	if s.IsPagadoUnico {
+		pagado += s.PagoUnico
+	}
+	if s.IsPagadoDesestimacion {
+		pagado += s.MontoDesestimacion
+	}
 
 	return c.JSON(fiber.Map{
 		"seguimiento":    s,
@@ -109,22 +144,24 @@ func RegistrarDesembolsoHandler(c *fiber.Ctx) error {
 	switch v := req.Etapa.(type) {
 	case float64: // JSON numbers are float64 in Go interface{}
 		etapaInt := int(v)
-		// Regla de Etapa 1 (25% Máximo)
-		if etapaInt == 1 && s.PagoUnico == 0 {
-			totalComision := s.PagoPactado1 + s.PagoPactado2 + s.PagoPactado3 + s.PagoPactado4
-			if s.PagoPactado1 > (totalComision * 0.2501) {
-				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-					"detail": fmt.Sprintf("El pago de Etapa 1 (Q%.2f) excede el 25%% de la comisión total (Q%.2f)", s.PagoPactado1, totalComision),
-				})
-			}
-		}
-
+		// La regla del 25% ya se validó al asignar el abogado.
+		// No es necesario volver a validarla aquí, especialmente porque en casos de
+		// desistimiento los totales cambian y dispararían este error erróneamente.
 		switch etapaInt {
-		case 1: s.IsPagado1 = true; s.FechaPago1 = &now
-		case 2: s.IsPagado2 = true; s.FechaPago2 = &now
-		case 3: s.IsPagado3 = true; s.FechaPago3 = &now
-		case 4: s.IsPagado4 = true; s.FechaPago4 = &now
-		default: return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"detail": "Etapa numérica inválida"})
+		case 1:
+			s.IsPagado1 = true
+			s.FechaPago1 = &now
+		case 2:
+			s.IsPagado2 = true
+			s.FechaPago2 = &now
+		case 3:
+			s.IsPagado3 = true
+			s.FechaPago3 = &now
+		case 4:
+			s.IsPagado4 = true
+			s.FechaPago4 = &now
+		default:
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"detail": "Etapa numérica inválida"})
 		}
 
 	case string:
@@ -142,6 +179,23 @@ func RegistrarDesembolsoHandler(c *fiber.Ctx) error {
 				// Registro normal
 				s.IsPagadoDesestimacion = true
 				s.FechaPagoDesestimacion = &now
+
+				// Cleanup: Si se paga desestimación, aseguramos que etapas futuras/actuales sean 0
+				// para que no quede saldo pendiente en los reportes
+				if s.EstadoSeguimiento <= 4 {
+					if s.EstadoSeguimiento <= 4 && !s.IsPagado4 {
+						s.PagoPactado4 = 0
+					}
+					if s.EstadoSeguimiento <= 3 && !s.IsPagado3 {
+						s.PagoPactado3 = 0
+					}
+					if s.EstadoSeguimiento <= 2 && !s.IsPagado2 {
+						s.PagoPactado2 = 0
+					}
+					if s.EstadoSeguimiento <= 1 && !s.IsPagado1 {
+						s.PagoPactado1 = 0
+					}
+				}
 			}
 		default:
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"detail": "Tipo de pago especial inválido"})

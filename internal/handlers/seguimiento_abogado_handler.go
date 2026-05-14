@@ -181,6 +181,24 @@ func DesistirSeguimientoHandler(c *fiber.Ctx) error {
 	seguimiento.EstadoLegalDemanda = "Desistido"
 	seguimiento.FechaEstadoLegal = time.Now()
 
+	// Zero out payments for the current stage and all future stages
+	// If the lawyer is in stage N, they haven't "finished" stage N, so we zero it out too.
+	// We only keep payments for stages < N (the ones truly completed).
+	if seguimiento.EstadoSeguimiento <= 4 {
+		if seguimiento.EstadoSeguimiento <= 4 {
+			seguimiento.PagoPactado4 = 0
+		}
+		if seguimiento.EstadoSeguimiento <= 3 {
+			seguimiento.PagoPactado3 = 0
+		}
+		if seguimiento.EstadoSeguimiento <= 2 {
+			seguimiento.PagoPactado2 = 0
+		}
+		if seguimiento.EstadoSeguimiento <= 1 {
+			seguimiento.PagoPactado1 = 0
+		}
+	}
+
 	if err := db.DB.Save(&seguimiento).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"detail": "Error al desistir seguimiento"})
 	}
