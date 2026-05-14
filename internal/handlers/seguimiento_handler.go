@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/csv"
+	"fmt"
 	"time"
 	"github.com/DevSoft-RECO/backend-creditos-go/internal/db"
 	"github.com/DevSoft-RECO/backend-creditos-go/internal/models"
@@ -147,6 +150,100 @@ func ListSeguimientosHandler(c *fiber.Ctx) error {
 		"pageSize":   pageSize,
 		"totalPages": (total + int64(pageSize) - 1) / int64(pageSize),
 	})
+}
+
+func ExportSeguimientosCSVHandler(c *fiber.Ctx) error {
+	abogadoID := c.QueryInt("abogadoId", 0)
+	status := c.Query("status", "")
+
+	query := db.DB.Model(&models.Seguimiento{}).Preload("Demanda").Preload("Abogado")
+
+	if abogadoID > 0 {
+		query = query.Where("id_abogado = ?", abogadoID)
+	}
+	if status != "" && status != "Todos" {
+		query = query.Where("estado_legal_demanda = ?", status)
+	}
+
+	var seguimientos []models.Seguimiento
+	if err := query.Order("id desc").Find(&seguimientos).Error; err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	c.Set("Content-Type", "text/csv; charset=utf-8")
+	c.Set("Content-Disposition", "attachment; filename=reporte_seguimientos.csv")
+
+	b := &bytes.Buffer{}
+	// Add UTF-8 BOM for Excel (0xEF, 0xBB, 0xBF)
+	b.Write([]byte{0xEF, 0xBB, 0xBF})
+	
+	w := csv.NewWriter(b)
+
+	// Header
+	w.Write([]string{
+		"No. Credito", "No. Juicio", "Deudor", "Bufete", "Etapa", "Estado", 
+		"Comision Total", 
+		"Monto Pagado E1", "Monto Pagado E2", "Monto Pagado E3", "Monto Pagado E4", 
+		"Saldo Pendiente",
+	})
+
+	for _, s := range seguimientos {
+		noCredito := ""
+		if s.Demanda != nil {
+			if s.Demanda.NoCredito != nil {
+				noCredito = *s.Demanda.NoCredito
+			} else if s.Demanda.NoCreditoT24 != nil {
+				noCredito = *s.Demanda.NoCreditoT24
+			}
+		}
+		
+		noJuicio := ""
+		if s.Demanda != nil && s.Demanda.NoJuicio != nil {
+			noJuicio = *s.Demanda.NoJuicio
+		}
+
+		deudor := ""
+		if s.Demanda != nil && s.Demanda.Deudor != nil {
+			deudor = *s.Demanda.Deudor
+		}
+
+		bufete := ""
+		if s.Abogado != nil && s.Abogado.Nombre != nil {
+			bufete = *s.Abogado.Nombre
+		}
+
+		// Calculate Totals and Amounts
+		comisionTotal := s.PagoPactado1 + s.PagoPactado2 + s.PagoPactado3 + s.PagoPactado4
+		
+		m1 := 0.0
+		if s.IsPagado1 { m1 = s.PagoPactado1 }
+		m2 := 0.0
+		if s.IsPagado2 { m2 = s.PagoPactado2 }
+		m3 := 0.0
+		if s.IsPagado3 { m3 = s.PagoPactado3 }
+		m4 := 0.0
+		if s.IsPagado4 { m4 = s.PagoPactado4 }
+		
+		pagadoTotal := m1 + m2 + m3 + m4
+		saldoFinal := comisionTotal - pagadoTotal
+
+		w.Write([]string{
+			noCredito,
+			noJuicio,
+			deudor,
+			bufete,
+			fmt.Sprintf("%d", s.EstadoSeguimiento),
+			s.EstadoLegalDemanda,
+			fmt.Sprintf("%.2f", comisionTotal),
+			fmt.Sprintf("%.2f", m1),
+			fmt.Sprintf("%.2f", m2),
+			fmt.Sprintf("%.2f", m3),
+			fmt.Sprintf("%.2f", m4),
+			fmt.Sprintf("%.2f", saldoFinal),
+		})
+	}
+	w.Flush()
+	return c.Send(b.Bytes())
 }
 
 // Helper para nil float64

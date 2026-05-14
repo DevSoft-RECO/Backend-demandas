@@ -41,6 +41,7 @@ func SetupRoutes(app *fiber.App) {
 
 	// Seguimientos
 	api.Get("/seguimientos", middleware.AuthRequired, handlers.ListSeguimientosHandler)
+	api.Get("/seguimientos/export", middleware.AuthRequired, handlers.ExportSeguimientosCSVHandler)
 	api.Post("/seguimientos", middleware.AuthRequired, handlers.CreateInitialTrackingHandler)
 
 	// Seguimiento Abogados (Módulo 2)
@@ -71,4 +72,3 @@ func SetupRoutes(app *fiber.App) {
 		return c.Redirect(config.Envs.FrontendURL + "/login?session_expired=true")
 	})
 }
-
