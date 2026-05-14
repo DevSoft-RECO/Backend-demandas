@@ -15,6 +15,9 @@ type Config struct {
 	FrontendURL        string
 	AllowedOrigins     string
 	OAuthPublicKeyPath string
+	GcsProjectId       string
+	GcsBucketName      string
+	GcsKeyFile         string
 }
 
 var Envs *Config
@@ -31,6 +34,9 @@ func LoadConfig() {
 		FrontendURL:        getEnv("APP_URL_FRONTEND", "http://localhost:5190"),
 		AllowedOrigins:     getEnv("ALLOWED_ORIGINS", "*"),
 		OAuthPublicKeyPath: getEnv("OAUTH_PUBLIC_KEY_PATH", "./keys/oauth-public.key"),
+		GcsProjectId:       getEnv("GCS_PROJECT_ID", ""),
+		GcsBucketName:      getEnv("GCS_BUCKET_NAME", ""),
+		GcsKeyFile:         getEnv("GCS_KEY_FILE", ""),
 	}
 
 

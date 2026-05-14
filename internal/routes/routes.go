@@ -49,6 +49,7 @@ func SetupRoutes(app *fiber.App) {
 	api.Post("/seguimientos/:id/comentario", middleware.AuthRequired, handlers.AddComentarioHandler)
 	api.Patch("/seguimientos/:id/avanzar", middleware.AuthRequired, handlers.AvanzarEtapaHandler)
 	api.Patch("/seguimientos/:id/desistir", middleware.AuthRequired, handlers.DesistirSeguimientoHandler)
+	api.Get("/evidencias/signed", middleware.AuthRequired, handlers.GetSignedURLHandler)
 
 	// Pagos (Módulo 3)
 	api.Get("/pagos/resumen-abogados", middleware.AuthRequired, handlers.GetPagosResumenAbogadosHandler)

@@ -3,12 +3,14 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/DevSoft-RECO/backend-creditos-go/internal/auth"
 	"github.com/DevSoft-RECO/backend-creditos-go/internal/db"
+	"github.com/DevSoft-RECO/backend-creditos-go/internal/gcs"
 	"github.com/DevSoft-RECO/backend-creditos-go/internal/models"
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/datatypes"
@@ -101,7 +103,7 @@ func AddComentarioHandler(c *fiber.Ctx) error {
 	fmt.Sscanf(etapaStr, "%d", &etapaInt)
 
 	var seguimiento models.Seguimiento
-	if err := db.DB.First(&seguimiento, id).Error; err != nil {
+	if err := db.DB.Preload("Demanda").First(&seguimiento, id).Error; err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"detail": "Seguimiento no encontrado"})
 	}
 
@@ -114,23 +116,29 @@ func AddComentarioHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"detail": "Solo se pueden agregar comentarios a la etapa activa"})
 	}
 
-	// Manejo de archivo opcional
+	// Manejo de archivo opcional con Google Cloud Storage
 	documentoPath := ""
 	file, err := c.FormFile("archivo")
 	if err == nil && file != nil { // El archivo fue enviado
-		// Crear nombre de archivo seguro
+		deudorNombre := "Desconocido"
+		if seguimiento.Demanda != nil && seguimiento.Demanda.Deudor != nil {
+			deudorNombre = *seguimiento.Demanda.Deudor
+		}
+
+		// Crear nombre de carpeta único con nombre sanitizado y ID Demanda
+		folderName := fmt.Sprintf("Demandas_Deudores/%s_%d", sanitizeName(deudorNombre), seguimiento.IDDemanda)
+		
 		timestamp := time.Now().UnixNano()
-		filename := fmt.Sprintf("evidencia_%s_%d.pdf", id, timestamp)
+		filename := fmt.Sprintf("%s/evidencia_%s_%d.pdf", folderName, id, timestamp)
 		
-		// Construir ruta (relativa al directorio actual)
-		savePath := fmt.Sprintf("./uploads/evidencias/%s", filename)
-		
-		if err := c.SaveFile(file, savePath); err != nil {
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"detail": "Error al guardar el documento adjunto"})
+		// Subir a GCS
+		gcsPath, err := gcs.UploadFile(file, filename)
+		if err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"detail": "Error al subir documento a la nube", "error": err.Error()})
 		}
 		
-		// Guardar ruta para el frontend
-		documentoPath = fmt.Sprintf("/uploads/evidencias/%s", filename)
+		// Guardar el object path de GCS para la bitácora
+		documentoPath = gcsPath
 	}
 
 	// Estructura del comentario
@@ -258,4 +266,28 @@ func getUserID(c *fiber.Ctx) int {
 	sub := fmt.Sprintf("%v", claims["sub"])
 	uid, _ := strconv.Atoi(sub)
 	return uid
+}
+// Funciones auxiliares
+
+func sanitizeName(name string) string {
+	name = strings.TrimSpace(name)
+	name = strings.ReplaceAll(name, " ", "_")
+	// Eliminar caracteres que no sean alfanuméricos o guiones bajos
+	reg := regexp.MustCompile("[^a-zA-Z0-9_]+")
+	return reg.ReplaceAllString(name, "")
+}
+
+// GetSignedURLHandler retorna una URL firmada de Google Cloud Storage para acceso temporal
+func GetSignedURLHandler(c *fiber.Ctx) error {
+	path := c.Query("path")
+	if path == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"detail": "La ruta del documento es requerida"})
+	}
+
+	url, err := gcs.GenerateSignedURL(path)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"detail": "Error generando enlace seguro", "error": err.Error()})
+	}
+
+	return c.JSON(fiber.Map{"url": url})
 }
