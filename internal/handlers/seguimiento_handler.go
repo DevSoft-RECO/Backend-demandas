@@ -117,11 +117,36 @@ func CreateInitialTrackingHandler(c *fiber.Ctx) error {
 }
 
 func ListSeguimientosHandler(c *fiber.Ctx) error {
+	page := c.QueryInt("page", 1)
+	pageSize := c.QueryInt("pageSize", 10)
+	abogadoID := c.QueryInt("abogadoId", 0)
+	status := c.Query("status", "")
+
+	query := db.DB.Model(&models.Seguimiento{}).Preload("Demanda").Preload("Abogado")
+
+	if abogadoID > 0 {
+		query = query.Where("id_abogado = ?", abogadoID)
+	}
+	if status != "" && status != "Todos" {
+		query = query.Where("estado_legal_demanda = ?", status)
+	}
+
+	var total int64
+	query.Count(&total)
+
 	var seguimientos []models.Seguimiento
-	if err := db.DB.Preload("Demanda").Preload("Abogado").Order("id desc").Find(&seguimientos).Error; err != nil {
+	offset := (page - 1) * pageSize
+	if err := query.Order("id desc").Offset(offset).Limit(pageSize).Find(&seguimientos).Error; err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"detail": "Error listando seguimientos", "error": err.Error()})
 	}
-	return c.JSON(seguimientos)
+
+	return c.JSON(fiber.Map{
+		"data":       seguimientos,
+		"total":      total,
+		"page":       page,
+		"pageSize":   pageSize,
+		"totalPages": (total + int64(pageSize) - 1) / int64(pageSize),
+	})
 }
 
 // Helper para nil float64
