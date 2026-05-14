@@ -3,7 +3,9 @@ package handlers
 import (
 	"bytes"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 	"github.com/DevSoft-RECO/backend-creditos-go/internal/db"
 	"github.com/DevSoft-RECO/backend-creditos-go/internal/models"
@@ -21,6 +23,11 @@ type CreateTrackingRequest struct {
 	PagoPactado2  float64 `json:"pago_pactado_2"`
 	PagoPactado3  float64 `json:"pago_pactado_3"`
 	PagoPactado4  float64 `json:"pago_pactado_4"`
+}
+
+type BitacoraEntry struct {
+	Fecha      string `json:"fecha"`
+	Comentario string `json:"comentario"`
 }
 
 func CreateInitialTrackingHandler(c *fiber.Ctx) error {
@@ -171,20 +178,25 @@ func ExportSeguimientosCSVHandler(c *fiber.Ctx) error {
 	}
 
 	c.Set("Content-Type", "text/csv; charset=utf-8")
-	c.Set("Content-Disposition", "attachment; filename=reporte_seguimientos.csv")
+	c.Set("Content-Disposition", "attachment; filename=reporte_seguimiento_legal.csv")
 
 	b := &bytes.Buffer{}
-	// Add UTF-8 BOM for Excel (0xEF, 0xBB, 0xBF)
 	b.Write([]byte{0xEF, 0xBB, 0xBF})
-	
 	w := csv.NewWriter(b)
 
-	// Header
+	// Header enfocado en Seguimiento Procesal
 	w.Write([]string{
-		"No. Credito", "No. Juicio", "Deudor", "Bufete", "Etapa", "Estado", 
-		"Comision Total", 
-		"Monto Pagado E1", "Monto Pagado E2", "Monto Pagado E3", "Monto Pagado E4", 
-		"Saldo Pendiente",
+		"No. Credito", 
+		"No. Juicio", 
+		"Deudor", 
+		"Bufete Asignado", 
+		"Etapa Actual", 
+		"Estado Proceso", 
+		"Ultima Actividad",
+		"Bitacora E1 (Presentacion)", 
+		"Bitacora E2 (Admision)", 
+		"Bitacora E3 (Notificacion)", 
+		"Bitacora E4 (Ejecucion)",
 	})
 
 	for _, s := range seguimientos {
@@ -197,53 +209,70 @@ func ExportSeguimientosCSVHandler(c *fiber.Ctx) error {
 			}
 		}
 		
-		noJuicio := ""
+		noJuicio := "S/N Juicio"
 		if s.Demanda != nil && s.Demanda.NoJuicio != nil {
 			noJuicio = *s.Demanda.NoJuicio
 		}
 
-		deudor := ""
+		deudor := "N/A"
 		if s.Demanda != nil && s.Demanda.Deudor != nil {
 			deudor = *s.Demanda.Deudor
 		}
 
-		bufete := ""
+		bufete := "No Asignado"
 		if s.Abogado != nil && s.Abogado.Nombre != nil {
 			bufete = *s.Abogado.Nombre
 		}
 
-		// Calculate Totals and Amounts
-		comisionTotal := s.PagoPactado1 + s.PagoPactado2 + s.PagoPactado3 + s.PagoPactado4
-		
-		m1 := 0.0
-		if s.IsPagado1 { m1 = s.PagoPactado1 }
-		m2 := 0.0
-		if s.IsPagado2 { m2 = s.PagoPactado2 }
-		m3 := 0.0
-		if s.IsPagado3 { m3 = s.PagoPactado3 }
-		m4 := 0.0
-		if s.IsPagado4 { m4 = s.PagoPactado4 }
-		
-		pagadoTotal := m1 + m2 + m3 + m4
-		saldoFinal := comisionTotal - pagadoTotal
+		etapaLabel := getEtapaLabel(s.EstadoSeguimiento)
+		if s.EstadoLegalDemanda == "Desistido" {
+			etapaLabel = "Finalizacion Anticipada"
+		}
 
 		w.Write([]string{
 			noCredito,
 			noJuicio,
 			deudor,
 			bufete,
-			fmt.Sprintf("%d", s.EstadoSeguimiento),
+			etapaLabel,
 			s.EstadoLegalDemanda,
-			fmt.Sprintf("%.2f", comisionTotal),
-			fmt.Sprintf("%.2f", m1),
-			fmt.Sprintf("%.2f", m2),
-			fmt.Sprintf("%.2f", m3),
-			fmt.Sprintf("%.2f", m4),
-			fmt.Sprintf("%.2f", saldoFinal),
+			s.FechaEstadoSeguimiento.Format("02/01/2006"),
+			formatBitacora(s.Etapa1JSON),
+			formatBitacora(s.Etapa2JSON),
+			formatBitacora(s.Etapa3JSON),
+			formatBitacora(s.Etapa4JSON),
 		})
 	}
 	w.Flush()
 	return c.Send(b.Bytes())
+}
+
+func getEtapaLabel(id int) string {
+	stages := map[int]string{
+		1: "Presentacion",
+		2: "Admision",
+		3: "Notificacion",
+		4: "Ejecucion",
+		5: "Finalizado",
+	}
+	if label, ok := stages[id]; ok {
+		return label
+	}
+	return "Desconocido"
+}
+
+func formatBitacora(data datatypes.JSON) string {
+	var entries []BitacoraEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return ""
+	}
+	
+	var lines []string
+	for _, e := range entries {
+		// Limpiar comas para no romper el CSV si no se usan comillas (aunque csv.Writer las pone)
+		lines = append(lines, fmt.Sprintf("[%s] %s", e.Fecha, e.Comentario))
+	}
+	return strings.Join(lines, " | ")
 }
 
 // Helper para nil float64
