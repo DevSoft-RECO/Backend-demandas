@@ -46,11 +46,22 @@ func CreateInitialTrackingHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"detail": "Demanda no encontrada"})
 	}
 
-	// 2. Obtener Preset
+	// Verificar si ya existe un seguimiento para esta demanda
+	var seguimiento models.Seguimiento
+	err := tx.Where("id_demanda = ?", req.IDDemanda).First(&seguimiento).Error
+	exists := err == nil
+
+	// 2. Obtener Preset (Solo obligatorio si es nuevo o si se envía un IDPreset > 0)
 	var preset models.Preset
-	if err := tx.First(&preset, req.IDPreset).Error; err != nil {
+	if req.IDPreset > 0 {
+		if err := tx.First(&preset, req.IDPreset).Error; err != nil {
+			tx.Rollback()
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"detail": "Preset no encontrado"})
+		}
+	} else if !exists {
+		// Si es nuevo seguimiento, el preset es OBLIGATORIO
 		tx.Rollback()
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"detail": "Preset no encontrado"})
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"detail": "Se requiere una plantilla de pagos (Preset) para nuevas asignaciones"})
 	}
 
 	// 3. Obtener Abogado (Bufete)
@@ -60,57 +71,52 @@ func CreateInitialTrackingHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"detail": "Abogado no encontrado"})
 	}
 
-	// Cálculos de Pagos Sugeridos
-	montoDemanda := 0.0
-	if demanda.MontoDemanda != nil {
-		montoDemanda = *demanda.MontoDemanda
+	// Cálculos de Pagos Sugeridos (Solo si hay un preset nuevo)
+	if req.IDPreset > 0 {
+		montoDemanda := 0.0
+		if demanda.MontoDemanda != nil {
+			montoDemanda = *demanda.MontoDemanda
+		}
+
+		porcentajeComision := nz(preset.PorcentajeComision)
+		totalComision := montoDemanda * (porcentajeComision / 100.0)
+
+		calcPago := func(porcentaje *float64) float64 {
+			if porcentaje == nil { return 0.0 }
+			return totalComision * (*porcentaje / 100.0)
+		}
+
+		seguimiento.PorcentajeDemanda = porcentajeComision
+		seguimiento.PagoSugerido1 = calcPago(preset.PorcentajeEtapa1)
+		seguimiento.PagoSugerido2 = calcPago(preset.PorcentajeEtapa2)
+		seguimiento.PagoSugerido3 = calcPago(preset.PorcentajeEtapa3)
+		seguimiento.PagoSugerido4 = calcPago(preset.PorcentajeEtapa4)
 	}
-
-	porcentajeComision := nz(preset.PorcentajeComision)
-	totalComision := montoDemanda * (porcentajeComision / 100.0)
-
-	calcPago := func(porcentaje *float64) float64 {
-		if porcentaje == nil { return 0.0 }
-		return totalComision * (*porcentaje / 100.0)
-	}
-
-	// Verificar si ya existe un seguimiento para esta demanda
-	var seguimiento models.Seguimiento
-	err := tx.Where("id_demanda = ?", req.IDDemanda).First(&seguimiento).Error
-	exists := err == nil
 
 	// Mapear campos comunes
 	seguimiento.IDDemanda = req.IDDemanda
 	seguimiento.IDAbogado = req.IDAbogado
-	seguimiento.PorcentajeDemanda = porcentajeComision
 	seguimiento.PagoUnico = req.PagoUnico
 	seguimiento.MontoDesestimacion = req.MontoDesestimacion
 
-	// Etapa 1
-	seguimiento.PagoSugerido1 = calcPago(preset.PorcentajeEtapa1)
+	// Actualizar Pactados
 	seguimiento.PagoPactado1 = req.PagoPactado1
-	if !exists { seguimiento.Etapa1JSON = datatypes.JSON([]byte("[]")) }
-
-	// Etapa 2
-	seguimiento.PagoSugerido2 = calcPago(preset.PorcentajeEtapa2)
 	seguimiento.PagoPactado2 = req.PagoPactado2
-	if !exists { seguimiento.Etapa2JSON = datatypes.JSON([]byte("[]")) }
-
-	// Etapa 3
-	seguimiento.PagoSugerido3 = calcPago(preset.PorcentajeEtapa3)
 	seguimiento.PagoPactado3 = req.PagoPactado3
-	if !exists { seguimiento.Etapa3JSON = datatypes.JSON([]byte("[]")) }
-
-	// Etapa 4
-	seguimiento.PagoSugerido4 = calcPago(preset.PorcentajeEtapa4)
 	seguimiento.PagoPactado4 = req.PagoPactado4
-	if !exists { seguimiento.Etapa4JSON = datatypes.JSON([]byte("[]")) }
 
+	// Inicializar JSONs si es nuevo
 	if !exists {
+		seguimiento.Etapa1JSON = datatypes.JSON([]byte("[]"))
+		seguimiento.Etapa2JSON = datatypes.JSON([]byte("[]"))
+		seguimiento.Etapa3JSON = datatypes.JSON([]byte("[]"))
+		seguimiento.Etapa4JSON = datatypes.JSON([]byte("[]"))
+		
 		seguimiento.EstadoSeguimiento = 1
 		seguimiento.EstadoLegalDemanda = "Vigente"
 		seguimiento.FechaEstadoSeguimiento = time.Now()
 		seguimiento.FechaEstadoLegal = time.Now()
+		
 		if err := tx.Create(&seguimiento).Error; err != nil {
 			tx.Rollback()
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"detail": "Error creando seguimiento", "error": err.Error()})
