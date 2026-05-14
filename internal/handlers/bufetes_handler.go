@@ -40,6 +40,12 @@ func CreateBufeteHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"detail": "El usuario no tiene 'name' para precargar el bufete"})
 	}
 
+	// Verificar si el usuario ya está asignado a un bufete
+	var existingBufete models.Bufete
+	if err := db.DB.Where("usuario_id = ?", body.UsuarioID).First(&existingBufete).Error; err == nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"detail": "Este usuario ya está asignado a un bufete registrado"})
+	}
+
 	bufete := models.Bufete{
 		UsuarioID: body.UsuarioID,
 		Nombre:    usuario.Name,
