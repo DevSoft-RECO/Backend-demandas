@@ -14,19 +14,28 @@ import (
 	"gorm.io/datatypes"
 )
 
-// SeguimientoAbogadoResponse DTO para ocultar campos financieros
+// DemandaSimple DTO con campos básicos para el abogado
+type DemandaSimple struct {
+	ID           uint    `json:"id"`
+	NoCredito    *string `json:"no_credito"`
+	NoCreditoT24 *string `json:"no_credito_t24"`
+	Deudor       *string `json:"deudor"`
+	NoJuicio     *string `json:"no_juicio"`
+}
+
+// SeguimientoAbogadoResponse DTO para ocultar campos financieros y optimizar data
 type SeguimientoAbogadoResponse struct {
 	ID                  uint            `json:"id"`
 	IDDemanda           uint            `json:"id_demanda"`
-	Demanda             *models.Demanda `json:"demanda"`
+	Demanda             DemandaSimple   `json:"demanda"`
 	EstadoSeguimiento   int             `json:"estado_seguimiento"`
-	EstadoLegalDemanda  string         `json:"estado_legal_demanda"`
-	Etapa1JSON          datatypes.JSON `json:"etapa_1_json"`
-	Etapa2JSON          datatypes.JSON `json:"etapa_2_json"`
-	Etapa3JSON          datatypes.JSON `json:"etapa_3_json"`
-	Etapa4JSON          datatypes.JSON `json:"etapa_4_json"`
-	FechaEstadoSeguimiento time.Time     `json:"fecha_estado_seguimiento"`
-	FechaEstadoLegal       time.Time     `json:"fecha_estado_legal"`
+	EstadoLegalDemanda  string          `json:"estado_legal_demanda"`
+	Etapa1JSON          datatypes.JSON  `json:"etapa_1_json"`
+	Etapa2JSON          datatypes.JSON  `json:"etapa_2_json"`
+	Etapa3JSON          datatypes.JSON  `json:"etapa_3_json"`
+	Etapa4JSON          datatypes.JSON  `json:"etapa_4_json"`
+	FechaEstadoSeguimiento time.Time    `json:"fecha_estado_seguimiento"`
+	FechaEstadoLegal       time.Time    `json:"fecha_estado_legal"`
 }
 
 // GetSeguimientosByAbogadoHandler retorna los casos asignados al abogado actual (basado en sesión)
@@ -47,13 +56,21 @@ func GetSeguimientosByAbogadoHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"detail": "Error al buscar seguimientos"})
 	}
 
-	// Mapear a DTO para ocultar campos financieros
+	// Mapear a DTO para ocultar campos financieros y simplificar la demanda
 	response := make([]SeguimientoAbogadoResponse, len(seguimientos))
 	for i, s := range seguimientos {
+		simple := DemandaSimple{
+			ID:           s.IDDemanda,
+			NoCredito:    s.Demanda.NoCredito,
+			NoCreditoT24: s.Demanda.NoCreditoT24,
+			Deudor:       s.Demanda.Deudor,
+			NoJuicio:     s.Demanda.NoJuicio,
+		}
+
 		response[i] = SeguimientoAbogadoResponse{
 			ID:                  s.ID,
 			IDDemanda:           s.IDDemanda,
-			Demanda:             s.Demanda,
+			Demanda:             simple,
 			EstadoSeguimiento:   s.EstadoSeguimiento,
 			EstadoLegalDemanda:  s.EstadoLegalDemanda,
 			Etapa1JSON:          s.Etapa1JSON,
@@ -68,17 +85,20 @@ func GetSeguimientosByAbogadoHandler(c *fiber.Ctx) error {
 	return c.JSON(response)
 }
 
-// AddComentarioHandler agrega un comentario a la bitácora de la etapa actual
+// AddComentarioHandler agrega un comentario a la bitácora de la etapa actual y un archivo opcional
 func AddComentarioHandler(c *fiber.Ctx) error {
 	id := c.Params("id")
-	var req struct {
-		Etapa      int    `json:"etapa"`
-		Comentario string `json:"comentario"`
+	
+	// Leer valores del formulario en lugar de JSON
+	etapaStr := c.FormValue("etapa")
+	comentario := c.FormValue("comentario")
+	
+	if etapaStr == "" || comentario == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"detail": "Etapa y comentario son requeridos"})
 	}
 
-	if err := c.BodyParser(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"detail": "Cuerpo de solicitud inválido"})
-	}
+	etapaInt := 0
+	fmt.Sscanf(etapaStr, "%d", &etapaInt)
 
 	var seguimiento models.Seguimiento
 	if err := db.DB.First(&seguimiento, id).Error; err != nil {
@@ -90,19 +110,41 @@ func AddComentarioHandler(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"detail": "El proceso no está vigente para edición"})
 	}
 
-	if req.Etapa != seguimiento.EstadoSeguimiento {
+	if etapaInt != seguimiento.EstadoSeguimiento {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"detail": "Solo se pueden agregar comentarios a la etapa activa"})
+	}
+
+	// Manejo de archivo opcional
+	documentoPath := ""
+	file, err := c.FormFile("archivo")
+	if err == nil && file != nil { // El archivo fue enviado
+		// Crear nombre de archivo seguro
+		timestamp := time.Now().UnixNano()
+		filename := fmt.Sprintf("evidencia_%s_%d.pdf", id, timestamp)
+		
+		// Construir ruta (relativa al directorio actual)
+		savePath := fmt.Sprintf("./uploads/evidencias/%s", filename)
+		
+		if err := c.SaveFile(file, savePath); err != nil {
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"detail": "Error al guardar el documento adjunto"})
+		}
+		
+		// Guardar ruta para el frontend
+		documentoPath = fmt.Sprintf("/uploads/evidencias/%s", filename)
 	}
 
 	// Estructura del comentario
 	nuevoComentario := map[string]string{
 		"fecha":      time.Now().Format("2006-01-02"),
-		"comentario": req.Comentario,
+		"comentario": comentario,
+	}
+	if documentoPath != "" {
+		nuevoComentario["documento"] = documentoPath
 	}
 
 	// Obtener la bitácora actual
 	var bitacoraActual datatypes.JSON
-	switch req.Etapa {
+	switch etapaInt {
 	case 1: bitacoraActual = seguimiento.Etapa1JSON
 	case 2: bitacoraActual = seguimiento.Etapa2JSON
 	case 3: bitacoraActual = seguimiento.Etapa3JSON
@@ -118,7 +160,7 @@ func AddComentarioHandler(c *fiber.Ctx) error {
 	nuevaBitacora, _ := json.Marshal(comentarios)
 
 	// Actualizar el campo correspondiente en el struct y guardar
-	switch req.Etapa {
+	switch etapaInt {
 	case 1:
 		seguimiento.Etapa1JSON = datatypes.JSON(nuevaBitacora)
 	case 2:

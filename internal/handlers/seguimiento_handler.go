@@ -28,6 +28,7 @@ type CreateTrackingRequest struct {
 type BitacoraEntry struct {
 	Fecha      string `json:"fecha"`
 	Comentario string `json:"comentario"`
+	Documento  string `json:"documento,omitempty"`
 }
 
 func CreateInitialTrackingHandler(c *fiber.Ctx) error {

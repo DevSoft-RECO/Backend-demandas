@@ -40,6 +40,9 @@ func main() {
 	// 6. Routes
 	routes.SetupRoutes(app)
 
+	// Servir archivos estáticos (Documentos adjuntos de bitácora)
+	app.Static("/uploads", "./uploads")
+
 	// 7. Start Server
 	port := config.Envs.Port
 	fmt.Printf("Servidor arrancando en puerto %s...\n", port)
