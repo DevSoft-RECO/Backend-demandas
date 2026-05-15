@@ -21,6 +21,7 @@ type MotherUserData struct {
 	Roles       interface{} `json:"roles"`
 	Permissions interface{} `json:"permissions"`
 	Permisos    interface{} `json:"permisos"` // Laravel might use permisos
+	PermissionsDetailed interface{} `json:"permissions_detailed"`
 	Agencia     struct {
 		ID        int     `json:"id"`
 		Nombre    string  `json:"nombre"`
