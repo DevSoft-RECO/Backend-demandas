@@ -115,7 +115,7 @@ func GenerateBackupHandler(c *fiber.Ctx) error {
 			if err != nil {
 				errStr := fmt.Sprintf("Error al crear archivo de backup en disco: %v", err)
 				log.Printf("Backup Go: %s", errStr)
-				sendCallbackToMother(requestData.CallbackURL, requestData.AppKey, filename, "failed", requestData.UserID, errStr)
+				sendCallbackToMother(requestData.CallbackURL, requestData.AppKey, filename, "failed", requestData.UserID, errStr, nil)
 				return
 			}
 			
