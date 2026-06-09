@@ -136,7 +136,7 @@ func GenerateBackupHandler(c *fiber.Ctx) error {
 		if runErr != nil {
 			errStr := fmt.Sprintf("Error al ejecutar pg_dump: %v. Stderr: %s", runErr, stderr.String())
 			log.Printf("Backup Go: %s", errStr)
-			sendCallbackToMother(requestData.CallbackURL, requestData.AppKey, filename, "failed", requestData.UserID, errStr)
+			sendCallbackToMother(requestData.CallbackURL, requestData.AppKey, filename, "failed", requestData.UserID, errStr, nil)
 			return
 		}
 
@@ -145,12 +145,13 @@ func GenerateBackupHandler(c *fiber.Ctx) error {
 		if err != nil || info.Size() == 0 {
 			errStr := "Archivo de backup no fue creado o está vacío."
 			log.Printf("Backup Go: %s", errStr)
-			sendCallbackToMother(requestData.CallbackURL, requestData.AppKey, filename, "failed", requestData.UserID, errStr)
+			sendCallbackToMother(requestData.CallbackURL, requestData.AppKey, filename, "failed", requestData.UserID, errStr, nil)
 			return
 		}
 
 		log.Printf("Backup Go: Respaldo completado exitosamente: %s", filename)
-		sendCallbackToMother(requestData.CallbackURL, requestData.AppKey, filename, "success", requestData.UserID, "")
+		fileSize := info.Size()
+		sendCallbackToMother(requestData.CallbackURL, requestData.AppKey, filename, "success", requestData.UserID, "", &fileSize)
 	}()
 
 	return c.Status(202).JSON(fiber.Map{
@@ -197,22 +198,10 @@ func DownloadBackupHandler(c *fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"error": "El archivo ya no existe o ya fue descargado"})
 	}
 
-	log.Printf("Backup Go: Descargando y auto-destruyendo archivo: %s", filename)
+	log.Printf("Backup Go: Descargando archivo: %s", filename)
 
-	// Servir archivo forzando descarga como adjunto (Attachment) y luego borrarlo
+	// Servir archivo forzando descarga como adjunto (Attachment). El borrado lo controla la Madre.
 	err = c.Download(filePath, filename)
-	if err == nil {
-		// Ejecutar borrado asíncrono levemente retrasado para dar tiempo a cerrar el descriptor de archivo
-		go func() {
-			time.Sleep(2 * time.Second)
-			if err := os.Remove(filePath); err != nil {
-				log.Printf("Backup Go: Error al auto-destruir archivo %s: %v", filename, err)
-			} else {
-				log.Printf("Backup Go: Archivo auto-destruido con éxito: %s", filename)
-			}
-		}()
-	}
-
 	return err
 }
 
@@ -224,7 +213,7 @@ func mathAbs(v int64) int64 {
 	return v
 }
 
-func sendCallbackToMother(callbackURL string, appKey string, filename string, status string, userID int, errStr string) {
+func sendCallbackToMother(callbackURL string, appKey string, filename string, status string, userID int, errStr string, size *int64) {
 	token := config.Envs.BackupMadreToken
 	timestamp := time.Now().Unix()
 
@@ -235,6 +224,7 @@ func sendCallbackToMother(callbackURL string, appKey string, filename string, st
 		UserID    int     `json:"user_id"`
 		Timestamp int64   `json:"timestamp"`
 		Error     *string `json:"error"`
+		Size      *int64  `json:"size,omitempty"`
 	}
 
 	var errorVal *string
@@ -249,6 +239,7 @@ func sendCallbackToMother(callbackURL string, appKey string, filename string, st
 		UserID:    userID,
 		Timestamp: timestamp,
 		Error:     errorVal,
+		Size:      size,
 	}
 
 	bodyBytes, err := json.Marshal(payload)
@@ -283,4 +274,63 @@ func sendCallbackToMother(callbackURL string, appKey string, filename string, st
 	defer resp.Body.Close()
 
 	log.Printf("Backup Go Callback: Respuesta de la Madre recibida: %d", resp.StatusCode)
+}
+
+// DeleteBackupHandler borra el archivo físico a petición de la Madre
+// DELETE /api/internal/backup
+func DeleteBackupHandler(c *fiber.Ctx) error {
+	token := config.Envs.BackupMadreToken
+	signature := c.Get("X-Signature")
+	timestampStr := c.Get("X-Timestamp")
+
+	timestamp, err := strconv.ParseInt(timestampStr, 10, 64)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Timestamp inválido"})
+	}
+
+	// 1. Validar expiración (máximo 5 minutos)
+	if mathAbs(time.Now().Unix()-timestamp) > 300 {
+		return c.Status(403).JSON(fiber.Map{"error": "Petición expirada"})
+	}
+
+	// Obtener el body crudo para validar la firma
+	bodyBytes := c.Body()
+
+	// 2. Validar firma HMAC-SHA256
+	mac := hmac.New(sha256.New, []byte(token))
+	mac.Write([]byte(fmt.Sprintf("%d%s", timestamp, string(bodyBytes))))
+	expectedSignature := hex.EncodeToString(mac.Sum(nil))
+
+	if !hmac.Equal([]byte(expectedSignature), []byte(signature)) {
+		log.Println("Backup Go: Firma de borrado inválida recibida de la Madre.")
+		return c.Status(401).JSON(fiber.Map{"error": "Firma no coincide o no autorizada"})
+	}
+
+	// 3. Parsear datos de la petición
+	var requestData struct {
+		File string `json:"file"`
+	}
+
+	if err := json.Unmarshal(bodyBytes, &requestData); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "Payload inválido"})
+	}
+
+	filePath := filepath.Join("./backups", requestData.File)
+
+	// Verificar existencia del archivo
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		log.Printf("Backup Go: Archivo no encontrado para borrar: %s", requestData.File)
+		return c.Status(404).JSON(fiber.Map{"error": "El archivo no existe"})
+	}
+
+	if err := os.Remove(filePath); err != nil {
+		log.Printf("Backup Go: Error al borrar archivo %s: %v", requestData.File, err)
+		return c.Status(500).JSON(fiber.Map{"error": "No se pudo borrar el archivo"})
+	}
+
+	log.Printf("Backup Go: Archivo borrado exitosamente a petición de la Madre: %s", requestData.File)
+	return c.JSON(fiber.Map{
+		"status":  "success",
+		"message": "Archivo eliminado correctamente.",
+	})
 }
