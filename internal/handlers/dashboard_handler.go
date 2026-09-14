@@ -18,8 +18,9 @@ type DashboardStats struct {
 	PagosPendientes int64   `json:"pagos_pendientes"`
 	AbogadosActivos int64   `json:"abogados_activos"`
 	// Distribución por estado legal
-	CasosVigentes    int64 `json:"casos_vigentes"`
-	CasosDesistidos  int64 `json:"casos_desistidos"`
+	CasosPendientes  int64 `json:"casos_pendientes"`
+	CasosActivos     int64 `json:"casos_activos"`
+	CasosCancelados  int64 `json:"casos_cancelados"`
 	CasosFinalizados int64 `json:"casos_finalizados"`
 	// Montos globales
 	CapitalEnRiesgo float64 `json:"capital_en_riesgo"`
@@ -132,9 +133,20 @@ func GetDashboardStats(c *fiber.Ctx) error {
 	stats.PagosPendientes = pagosPendientesCount
 
 	// 5. Distribución por estado legal
-	db.DB.Model(&models.Seguimiento{}).Where("estado_legal_demanda = ?", "Vigente").Count(&stats.CasosVigentes)
-	db.DB.Model(&models.Seguimiento{}).Where("estado_legal_demanda = ?", "Desistido").Count(&stats.CasosDesistidos)
-	db.DB.Model(&models.Seguimiento{}).Where("estado_legal_demanda = ?", "Finalizado").Count(&stats.CasosFinalizados)
+	// Pendientes: Demandas que no tienen registro en seguimientos
+	db.DB.Model(&models.Demanda{}).
+		Joins("LEFT JOIN seguimientos ON seguimientos.id_demanda = demandas.id").
+		Where("seguimientos.id IS NULL").
+		Count(&stats.CasosPendientes)
+		
+	// Activos: Seguimientos Vigentes
+	db.DB.Model(&models.Seguimiento{}).Where("estado_legal_demanda = ?", "Vigente").Count(&stats.CasosActivos)
+	
+	// Cancelados: Seguimientos Cancelados o Suspendidos
+	db.DB.Model(&models.Seguimiento{}).Where("estado_legal_demanda IN ?", []string{"Cancelado", "Suspendido"}).Count(&stats.CasosCancelados)
+	
+	// Finalizados: Seguimientos Finalizados y Desistidos (según requerimiento de agruparlos)
+	db.DB.Model(&models.Seguimiento{}).Where("estado_legal_demanda IN ?", []string{"Finalizado", "Desistido"}).Count(&stats.CasosFinalizados)
 
 	// 6. Distribución por Etapas (solo seguimientos vigentes, porcentaje sobre total seguimientos)
 	stageNames := map[int]string{1: "Presentación", 2: "Admisión", 3: "Notificación", 4: "Ejecución"}
