@@ -23,6 +23,8 @@ type CreateTrackingRequest struct {
 	PagoPactado2  float64 `json:"pago_pactado_2"`
 	PagoPactado3  float64 `json:"pago_pactado_3"`
 	PagoPactado4  float64 `json:"pago_pactado_4"`
+	MontoCargosAdicionales       *float64 `json:"monto_cargos_adicionales"`
+	DescripcionCargosAdicionales *string  `json:"descripcion_cargos_adicionales"`
 }
 
 type BitacoraEntry struct {
@@ -99,6 +101,8 @@ func CreateInitialTrackingHandler(c *fiber.Ctx) error {
 	seguimiento.IDAbogado = req.IDAbogado
 	seguimiento.PagoUnico = req.PagoUnico
 	seguimiento.MontoDesestimacion = req.MontoDesestimacion
+	seguimiento.MontoCargosAdicionales = req.MontoCargosAdicionales
+	seguimiento.DescripcionCargosAdicionales = req.DescripcionCargosAdicionales
 
 	// Actualizar Pactados
 	seguimiento.PagoPactado1 = req.PagoPactado1

@@ -63,6 +63,13 @@ func GetPagosResumenAbogadosHandler(c *fiber.Ctx) error {
 			} else if seg.MontoDesestimacion > 0 {
 				totalPendiente += seg.MontoDesestimacion
 			}
+			
+			if seg.MontoCargosAdicionales != nil {
+				totalPagado += seg.MontoCargosAdicionalesPagado
+				if *seg.MontoCargosAdicionales > seg.MontoCargosAdicionalesPagado {
+					totalPendiente += (*seg.MontoCargosAdicionales - seg.MontoCargosAdicionalesPagado)
+				}
+			}
 		}
 
 		nombreAbogado := "Sin Nombre"
@@ -112,6 +119,11 @@ func GetPagoDetalleSeguimientoHandler(c *fiber.Ctx) error {
 	if s.IsPagadoDesestimacion {
 		pagado += s.MontoDesestimacion
 	}
+	
+	if s.MontoCargosAdicionales != nil {
+		totalComision += *s.MontoCargosAdicionales
+	}
+	pagado += s.MontoCargosAdicionalesPagado
 
 	return c.JSON(fiber.Map{
 		"seguimiento":    s,
@@ -127,6 +139,7 @@ func RegistrarDesembolsoHandler(c *fiber.Ctx) error {
 		IDSeguimiento uint        `json:"id_seguimiento"`
 		Etapa         interface{} `json:"etapa"`
 		Cancelar      bool        `json:"cancelar"` // Nuevo campo para anular montos
+		MontoAbono    float64     `json:"monto_abono"` // Para abonos parciales como cargos adicionales
 	}
 
 	if err := c.BodyParser(&req); err != nil {
@@ -197,6 +210,9 @@ func RegistrarDesembolsoHandler(c *fiber.Ctx) error {
 					}
 				}
 			}
+		case "cargos_adicionales":
+			s.MontoCargosAdicionalesPagado += req.MontoAbono
+			s.FechaPagoCargosAdicionales = &now
 		default:
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"detail": "Tipo de pago especial inválido"})
 		}

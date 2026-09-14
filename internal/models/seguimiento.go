@@ -22,6 +22,10 @@ type Seguimiento struct {
 	IsPagadoUnico             bool    `gorm:"default:false" json:"is_pagado_unico"`
 	MontoDesestimacion        float64 `json:"monto_desestimacion"`
 	IsPagadoDesestimacion     bool    `gorm:"default:false" json:"is_pagado_desestimacion"`
+	MontoCargosAdicionales       *float64 `json:"monto_cargos_adicionales"`
+	DescripcionCargosAdicionales *string  `json:"descripcion_cargos_adicionales"`
+	MontoCargosAdicionalesPagado float64  `gorm:"default:0" json:"monto_cargos_adicionales_pagado"`
+	FechaPagoCargosAdicionales   *time.Time `json:"fecha_pago_cargos_adicionales"`
 
 	// Etapa 1: Presentación
 	Etapa1JSON    datatypes.JSON `gorm:"type:jsonb;default:'[]'" json:"etapa_1_json"`
