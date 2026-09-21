@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/DevSoft-RECO/backend-creditos-go/internal/db"
@@ -128,9 +129,20 @@ func ListDemandasHandler(c *fiber.Ctx) error {
 		query = query.Where("no_credito LIKE ? OR cif LIKE ? OR deudor LIKE ? OR no_juicio LIKE ?", s, s, s, s)
 	}
 
-	estado := c.Query("estado")
+	estado := strings.ToLower(strings.TrimSpace(c.Query("estado")))
 	if estado != "" {
-		query = query.Where("LOWER(estado_legal) = LOWER(?)", estado)
+		switch estado {
+		case "desistido":
+			query = query.Where("LOWER(estado_legal) LIKE '%desist%' OR LOWER(estado_legal) LIKE '%disist%' OR LOWER(estado_legal) LIKE '%desit%'")
+		case "vigente":
+			query = query.Where("LOWER(estado_legal) LIKE '%vigent%' OR estado_legal IS NULL OR TRIM(estado_legal) = ''")
+		case "cancelado":
+			query = query.Where("LOWER(estado_legal) LIKE '%cancel%' OR LOWER(estado_legal) LIKE '%resuelt%'")
+		case "suspendido":
+			query = query.Where("LOWER(estado_legal) LIKE '%suspend%'")
+		default:
+			query = query.Where("LOWER(estado_legal) = ?", estado)
+		}
 	}
 
 	// Contar total antes de paginar

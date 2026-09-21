@@ -97,6 +97,44 @@ func resolveAgenciaID(raw string, agencias []models.Agencia) *int {
 	return nil
 }
 
+// Helper para normalizar el estado legal clasificando textos largos y preservando detalles
+func normalizeEstadoLegal(raw string, obs2 *string) (*string, *string) {
+	clean := strings.TrimSpace(raw)
+	if clean == "" || strings.ToUpper(clean) == "N/A" || strings.ToUpper(clean) == "NULL" {
+		vig := "Vigente"
+		return &vig, obs2
+	}
+
+	upper := strings.ToUpper(clean)
+	var standard string
+
+	if strings.Contains(upper, "DESIST") || strings.Contains(upper, "DISIST") || strings.Contains(upper, "DESIT") {
+		standard = "Desistido"
+	} else if strings.Contains(upper, "CANCEL") || strings.Contains(upper, "RESUELT") {
+		standard = "Cancelado"
+	} else if strings.Contains(upper, "SUSPEND") {
+		standard = "Suspendido"
+	} else if strings.Contains(upper, "VIGENT") {
+		standard = "Vigente"
+	} else {
+		standard = "Vigente"
+	}
+
+	// Si el texto contenía detalles o fechas adicionales (ej: "DESISTIDO EN ENERO 2026", "DESISTIDO (PAGO DE COSTAS)"),
+	// lo preservamos en Observacion2 para que no se pierda la información original.
+	if upper != "DESISTIDO" && upper != "VIGENTE" && upper != "CANCELADO" && upper != "SUSPENDIDO" && upper != "DESISTIMIENTO" {
+		tag := fmt.Sprintf("[Estado original: %s]", clean)
+		if obs2 == nil || *obs2 == "" {
+			obs2 = &tag
+		} else if !strings.Contains(*obs2, clean) {
+			combined := fmt.Sprintf("%s | %s", *obs2, tag)
+			obs2 = &combined
+		}
+	}
+
+	return &standard, obs2
+}
+
 func ImportDemandasHandler(c *fiber.Ctx) error {
 	fileHeader, err := c.FormFile("file")
 	if err != nil {
@@ -150,6 +188,8 @@ func ImportDemandasHandler(c *fiber.Ctx) error {
 		}
 
 		idAgencia := resolveAgenciaID(record[1], agencias)
+		obs2 := cleanStringField(record[20])
+		estadoLegal, obs2 := normalizeEstadoLegal(record[18], obs2)
 
 		d := models.Demanda{
 			IDAgencia:           idAgencia,
@@ -169,9 +209,9 @@ func ImportDemandasHandler(c *fiber.Ctx) error {
 			CostasJudiciales:    cleanNumericField(record[15]),
 			CostasRecuperadas:   cleanStringField(record[16]),
 			Observacion1:        cleanStringField(record[17]),
-			EstadoLegal:         cleanStringField(record[18]),
+			EstadoLegal:         estadoLegal,
 			SeguimientoLegacy:   cleanStringField(record[19]),
-			Observacion2:        cleanStringField(record[20]),
+			Observacion2:        obs2,
 		}
 
 		demandas = append(demandas, d)
