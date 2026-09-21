@@ -70,6 +70,15 @@ func ConnectDB() {
 	if driver == "postgres" || driver == "postgresql" {
 		DB.Exec("ALTER TABLE demandas ALTER COLUMN costas_recuperadas TYPE character varying(255);")
 		DB.Exec("ALTER TABLE demandas ALTER COLUMN cif TYPE character varying(50);")
+		DB.Exec("ALTER TABLE demandas ALTER COLUMN no_juicio TYPE character varying(255);")
+		DB.Exec("ALTER TABLE demandas ALTER COLUMN salario_embargado_a TYPE text;")
+		DB.Exec("ALTER TABLE demandas ALTER COLUMN situacion TYPE character varying(255);")
+		DB.Exec("ALTER TABLE demandas ALTER COLUMN forma_resolucion TYPE character varying(255);")
+		DB.Exec("ALTER TABLE demandas ALTER COLUMN fecha_ingreso_demanda TYPE character varying(100);")
+		DB.Exec("ALTER TABLE demandas ALTER COLUMN estado_legal TYPE character varying(100);")
+		DB.Exec("ALTER TABLE demandas ALTER COLUMN no_credito TYPE character varying(100);")
+		DB.Exec("ALTER TABLE demandas ALTER COLUMN codigo_cliente TYPE character varying(100);")
+		DB.Exec("ALTER TABLE demandas ALTER COLUMN no_credito_t24 TYPE character varying(100);")
 	}
 
 	fmt.Printf("Conexión a la base de datos establecida correctamente (%s).\n", driver)

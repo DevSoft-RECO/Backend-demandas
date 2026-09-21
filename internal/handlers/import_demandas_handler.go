@@ -1,8 +1,9 @@
 package handlers
 
 import (
-	"bufio"
+	"encoding/csv"
 	"fmt"
+	"io"
 	"regexp"
 	"strconv"
 	"strings"
@@ -20,6 +21,7 @@ func cleanStringField(val string) *string {
 		val = val[1 : len(val)-1]
 	}
 	val = strings.TrimSpace(val)
+	val = strings.ReplaceAll(val, "\x00", "")
 
 	if val == "" || strings.ToUpper(val) == "N/A" || strings.ToUpper(val) == "NULL" {
 		return nil
@@ -53,29 +55,46 @@ func cleanNumericField(val string) *float64 {
 	return &parsed
 }
 
-// Helper para limpiar enteros (extrae solo dígitos)
-func cleanIntField(val string) *int {
-	val = strings.TrimSpace(val)
-	if strings.HasPrefix(val, "\"") && strings.HasSuffix(val, "\"") {
-		val = val[1 : len(val)-1]
-	}
-
-	if val == "" || strings.ToUpper(val) == "N/A" || strings.ToUpper(val) == "NULL" {
+// Helper para resolver la agencia por ID o por nombre fuzzy
+func resolveAgenciaID(raw string, agencias []models.Agencia) *int {
+	clean := strings.TrimSpace(raw)
+	if clean == "" || strings.ToUpper(clean) == "N/A" || strings.ToUpper(clean) == "NULL" {
 		return nil
 	}
 
-	re := regexp.MustCompile(`[^0-9]`)
-	cleanVal := re.ReplaceAllString(val, "")
-
-	if cleanVal == "" {
-		return nil
+	// 1. Si es numérico directo
+	if idNum, err := strconv.Atoi(clean); err == nil {
+		for _, a := range agencias {
+			if a.ID == idNum {
+				res := a.ID
+				return &res
+			}
+		}
 	}
 
-	parsed, err := strconv.Atoi(cleanVal)
-	if err != nil {
-		return nil
+	lower := strings.ToLower(clean)
+
+	// 2. Caso especial Huehue07 -> Agencia Huehuetenango
+	if strings.Contains(lower, "huehue") {
+		for _, a := range agencias {
+			if strings.Contains(strings.ToLower(a.Nombre), "huehuetenango") {
+				res := a.ID
+				return &res
+			}
+		}
 	}
-	return &parsed
+
+	// 3. Coincidencia por subcadena de nombre
+	for _, a := range agencias {
+		aLower := strings.ToLower(a.Nombre)
+		nameWithoutPrefix := strings.TrimPrefix(aLower, "agencia ")
+		if strings.Contains(aLower, lower) || strings.Contains(lower, nameWithoutPrefix) {
+			res := a.ID
+			return &res
+		}
+	}
+
+	return nil
 }
 
 func ImportDemandasHandler(c *fiber.Ctx) error {
@@ -90,84 +109,72 @@ func ImportDemandasHandler(c *fiber.Ctx) error {
 	}
 	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	var demandas []models.Demanda
-	var lineBuffer string
-
-	// Pre-cargar IDs válidos de agencias para evitar violaciones de llaves foráneas
+	// Pre-cargar catálogo de agencias
 	var agencias []models.Agencia
-	db.DB.Select("id").Find(&agencias)
-	validAgencias := make(map[int]bool)
-	for _, a := range agencias {
-		validAgencias[int(a.ID)] = true
-	}
+	db.DB.Find(&agencias)
 
-	// Búfer para ir acumulando las líneas rotas
-	for scanner.Scan() {
-		line := scanner.Text()
+	// Lector CSV estándar compatible con RFC 4180 (soporta saltos de línea dentro de celdas entre comillas)
+	reader := csv.NewReader(file)
+	reader.Comma = ';'
+	reader.LazyQuotes = true
+	reader.FieldsPerRecord = -1
 
-		if lineBuffer == "" {
-			lineBuffer = line
-		} else {
-			// Si estamos concatenando una línea rota, agregamos un espacio para no perder legibilidad
-			lineBuffer += " " + line
+	var demandas []models.Demanda
+
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			// En caso de alguna anomalía en una fila puntual, continuamos con las demás
+			continue
 		}
 
-		// Contamos los puntos y comas. Sabiendo que hay 21 columnas, deben haber al menos 20 separadores.
-		semicolonCount := strings.Count(lineBuffer, ";")
-
-		if semicolonCount >= 20 {
-			// El registro está completo
-			fields := strings.Split(lineBuffer, ";")
-
-			// Si el CSV tiene un encabezado, lo ignoramos verificando que la columna 1 no sea la palabra ID o similar
-			if strings.ToLower(strings.TrimSpace(fields[0])) == "id" {
-				lineBuffer = ""
-				continue
-			}
-
-			// Asegurarnos de tener al menos 21 campos (pad en caso de que un registro extraño tenga menos)
-			for len(fields) < 21 {
-				fields = append(fields, "")
-			}
-
-			idAgencia := cleanIntField(fields[1])
-			if idAgencia != nil && !validAgencias[*idAgencia] {
-				// Si el ID de agencia no existe en la BD, lo ponemos nulo para evitar error de llave foránea
-				idAgencia = nil
-			}
-
-			d := models.Demanda{
-				// ID es la columna 0, la omitimos.
-				IDAgencia:           idAgencia,
-				NoCredito:           cleanStringField(fields[2]),
-				CIF:                 cleanStringField(fields[3]),
-				CodigoCliente:       cleanStringField(fields[4]),
-				NoCreditoT24:        cleanStringField(fields[5]),
-				Deudor:              cleanStringField(fields[6]),
-				Fiadores:            cleanStringField(fields[7]),
-				SalarioEmbargadoA:   cleanStringField(fields[8]),
-				NoJuicio:            cleanStringField(fields[9]),
-				FechaIngresoDemanda: cleanStringField(fields[10]),
-				AbogadoNombreExcel:  cleanStringField(fields[11]),
-				MontoDemanda:        cleanNumericField(fields[12]),
-				Situacion:           cleanStringField(fields[13]),
-				FormaResolucion:     cleanStringField(fields[14]),
-				CostasJudiciales:    cleanNumericField(fields[15]),
-				CostasRecuperadas:   cleanStringField(fields[16]),
-				Observacion1:        cleanStringField(fields[17]),
-				EstadoLegal:         cleanStringField(fields[18]),
-				SeguimientoLegacy:   cleanStringField(fields[19]),
-				Observacion2:        cleanStringField(fields[20]),
-			}
-
-			demandas = append(demandas, d)
-			lineBuffer = "" // Limpiamos el buffer para la siguiente fila
+		if len(record) == 0 {
+			continue
 		}
-	}
 
-	if err := scanner.Err(); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"detail": "Error leyendo el contenido del archivo"})
+		// Quitar posible BOM UTF-8 del primer campo
+		firstVal := strings.TrimSpace(record[0])
+		firstVal = strings.TrimPrefix(firstVal, "\ufeff")
+
+		// Si es la fila de encabezado ("id"), la ignoramos
+		if strings.ToLower(firstVal) == "id" {
+			continue
+		}
+
+		// Rellenar con cadenas vacías si el registro tiene menos de 21 columnas
+		for len(record) < 21 {
+			record = append(record, "")
+		}
+
+		idAgencia := resolveAgenciaID(record[1], agencias)
+
+		d := models.Demanda{
+			IDAgencia:           idAgencia,
+			NoCredito:           cleanStringField(record[2]),
+			CIF:                 cleanStringField(record[3]),
+			CodigoCliente:       cleanStringField(record[4]),
+			NoCreditoT24:        cleanStringField(record[5]),
+			Deudor:              cleanStringField(record[6]),
+			Fiadores:            cleanStringField(record[7]),
+			SalarioEmbargadoA:   cleanStringField(record[8]),
+			NoJuicio:            cleanStringField(record[9]),
+			FechaIngresoDemanda: cleanStringField(record[10]),
+			AbogadoNombreExcel:  cleanStringField(record[11]),
+			MontoDemanda:        cleanNumericField(record[12]),
+			Situacion:           cleanStringField(record[13]),
+			FormaResolucion:     cleanStringField(record[14]),
+			CostasJudiciales:    cleanNumericField(record[15]),
+			CostasRecuperadas:   cleanStringField(record[16]),
+			Observacion1:        cleanStringField(record[17]),
+			EstadoLegal:         cleanStringField(record[18]),
+			SeguimientoLegacy:   cleanStringField(record[19]),
+			Observacion2:        cleanStringField(record[20]),
+		}
+
+		demandas = append(demandas, d)
 	}
 
 	if len(demandas) == 0 {
