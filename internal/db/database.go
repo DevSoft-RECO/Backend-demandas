@@ -66,5 +66,11 @@ func ConnectDB() {
 		log.Printf("[ERROR] Error en auto-migración: %v", err)
 	}
 
+	// Migraciones manuales para columnas existentes (PostgreSQL no siempre amplía el tamaño automáticamente en AutoMigrate)
+	if driver == "postgres" || driver == "postgresql" {
+		DB.Exec("ALTER TABLE demandas ALTER COLUMN costas_recuperadas TYPE character varying(255);")
+		DB.Exec("ALTER TABLE demandas ALTER COLUMN cif TYPE character varying(50);")
+	}
+
 	fmt.Printf("Conexión a la base de datos establecida correctamente (%s).\n", driver)
 }

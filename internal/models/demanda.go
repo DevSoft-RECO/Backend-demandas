@@ -9,7 +9,7 @@ type Demanda struct {
 	IDAgencia           *int         `json:"id_agencia"`
 	Agencia             *Agencia     `gorm:"foreignKey:IDAgencia" json:"agencia,omitempty"`
 	NoCredito           *string      `gorm:"size:50;index" json:"no_credito"`
-	CIF                 *string      `gorm:"size:20;index" json:"cif"`
+	CIF                 *string      `gorm:"size:50;index" json:"cif"`
 	CodigoCliente       *string      `gorm:"size:50" json:"codigo_cliente"`
 	NoCreditoT24        *string      `gorm:"size:50" json:"no_credito_t24"`
 	Deudor              *string      `gorm:"size:255;index" json:"deudor"`
@@ -22,7 +22,7 @@ type Demanda struct {
 	Situacion           *string      `gorm:"size:100" json:"situacion"`
 	FormaResolucion     *string      `gorm:"size:100" json:"forma_resolucion"`
 	CostasJudiciales    *float64     `json:"costas_judiciales"`
-	CostasRecuperadas   *string      `gorm:"size:10" json:"costas_recuperadas"`
+	CostasRecuperadas   *string      `gorm:"size:255" json:"costas_recuperadas"`
 	Observacion1        *string      `gorm:"type:text" json:"observacion_1"`
 	EstadoLegal         *string      `gorm:"size:50" json:"estado_legal"`
 	SeguimientoLegacy   *string      `gorm:"type:text" json:"seguimiento_legacy"`
